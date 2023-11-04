@@ -1,8 +1,18 @@
 import { WebSocketServer } from 'ws';
 import express from 'express'; 
+import session from 'express-session'
+import flash from 'express-flash';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import cors from 'cors';
 import * as dotenv from 'dotenv'
+import passport from "passport";
+import LocalStrategy from 'passport-local';
+import Tables from "./Tables.js";
+import Db from "./Db.js";
+import * as Utils from './Utils.js'
+import bodyParser from 'body-parser';
+
 dotenv.config()
 
 export class ClientServer {
@@ -12,35 +22,45 @@ export class ClientServer {
         this.connexions = [];
         this.ready = false;
         this.app = express();
-        this.users = [];
         this.appList = process.env.APP_LIST.split(' ');
+        this.db = new Db();
+        this.user = null;
+        this.rateLimite = rateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            limit: 10, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
+            standardHeaders: 'draft-7', // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+            legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
+        });
+
+        passport.use(new LocalStrategy({
+            usernameField : Tables.users.fields.username,
+            passwordField : Tables.users.fields.password
+        }, (username, password, done) => {
+            const user = this.db.authUser(username, password);
+            if (!user){
+                return done(null, false, { message : 'User invalid' });
+            }
+            return done(null, user);
+        }));
+
+        passport.serializeUser((user, done) => {
+            done(null, user.id);
+        });
+
+        passport.deserializeUser((id, done) => {
+            const user = this.db.getUserById(id);
+            done(null, user);
+        });
+
     }
     start(port){
         if (this.httpServer === null) {
-            //this.app.use("/render", express.static(path.resolve("./render")));
-            this.app.use(cors({
-                origin: '*'
-            }));
+
+            this._configureApp();
             
             this.httpServer = this.app.listen(port, () => {
                 console.log(`Server listen on ${port}`);
                 this.ready = true;
-            });
-
-            this.app.get('/', (req, res) => {
-                
-            });
-
-            this.app.get('/render/:id/:app', (req, res) => {
-                let id = this._satanize(req.params.id);
-                let app = this._satanize(req.params.app);
-
-                if (!this._isValidApp(app)){
-                    res.status(401).send('UNAUTHORIZED');
-                    return;
-                }
-
-
             });
 
             this.wsServer = new WebSocketServer({
@@ -59,6 +79,8 @@ export class ClientServer {
                     vm.wsServer.emit('connection', ws, request);
                 });
             });
+
+            this._registerRoutes();
         }
     }
 
@@ -90,15 +112,15 @@ export class ClientServer {
         this.wsServer.clients.forEach(function each(client) {
             if (client.readyState === WebSocketServer.OPEN) {
                 let data = {
-                    message: message.content,
-                    messageId: message.id,
-                    isAction: message.isAction,
+                    message    : message.content,
+                    messageId  : message.id,
+                    isAction   : message.isAction,
                     isModerator: message.isModerator,
-                    name: user.name,
-                    avatar: user.avatar,
-                    userid: user.id,
-                    badges: user.badges,
-                    color: user.color,
+                    name       : user.name,
+                    avatar     : user.avatar,
+                    userid     : user.id,
+                    badges     : user.badges,
+                    color      : user.color,
                 };
 
                 client.send(data);
@@ -106,13 +128,108 @@ export class ClientServer {
         });
         
     }
+    _configureApp(){
+        this.app.use(cors({
+            origin: '*'
+        }));
 
-    _satanize(input) {
-        return input.replace(/[^A-z0-9_:\-àèìòùÀÈÌÒÙáéíóúýÁÉÍÓÚÝâêîôûÂÊÎÔÛãñõÃÑÕäëïöüÿÄËÏÖÜŸçÇßØøÅåÆæœ]/g, '');
+        this.app.use(session({
+            secret: process.env.SESSION_SECRET,
+            resave: false,
+            saveUninitialized: false
+        }));
+
+        this.app.use(bodyParser.json());
+        this.app.use(express.urlencoded({ extended: true })); 
+        this.app.use(passport.initialize());
+        this.app.use(passport.session());
+        this.app.use(flash());
+        this.app.use(express.static(path.resolve('./assets/css')));
+        this.app.use(express.static(path.resolve('./assets/meta')));
+
+        this.app.set('views', [path.resolve("./assets/views"), path.resolve("./apps")]);
+        this.app.set('view engine', 'pug');
+
+    }
+    _registerRoutes(){
+        this.app.get('/', (req, res) => {
+            if (!req.isAuthenticated()){
+                res.redirect('/login');
+            }else {
+                res.redirect('/render/default');
+            }
+        });
+
+        this.app.get('/login',  (req, res) => {
+            const hasError = Utils.defined(req.query.failed) && req.query.failed == 1;
+            res.render('login', this._tplParams({ 
+                error : hasError,
+                loginField : Tables.users.fields.username,
+                passField : Tables.users.fields.password,
+            }));
+        });
+
+        this.app.post('/login', this.rateLimite, passport.authenticate('local', {
+            successRedirect: '/render/default',
+            failureRedirect: '/login?failed=1',
+            failureFlash: true
+        }));
+
+        this.app.get('/render/:app', this._authenticated, (req, res) => {
+            this._handleReq(req);
+            let app = Utils.satanize(req.params.app);
+
+            if (!app || app === 'default'){
+                
+                let params = {
+                    list : this.appList,
+                    errors : []
+                };
+                
+                if (Utils.defined(req.query.notfound) && req.query.notfound == 1){
+                    params.errors.push('Unkown app');
+                }
+
+                res.render('apps', this._tplParams(params));
+                return;
+            }
+
+            if (!this._isValidApp(app)){
+                res.redirect('/render/default?notfound=1')
+                return;
+            }
+
+
+        });
     }
 
     _isValidApp(appName){
         return this.appList.indexOf(appName.toLowerCase()) > -1;
+    }
+
+    _authenticated(req, res, next){
+        if (req.isAuthenticated()) {
+            return next();
+        }
+        res.redirect('/login');
+    }
+
+    _handleReq(req){
+        this.user = req.user;
+    }
+
+    _tplParams(params){
+        params = params || {};
+        const defaultParams = {
+            title   : 'Obs App renderer',
+            user    : this.user,
+            appTitle: 'Obs App renderer',
+            mode    : 'admin'
+        };
+        return {
+            ...defaultParams,
+            ...params
+        };
     }
 
 };

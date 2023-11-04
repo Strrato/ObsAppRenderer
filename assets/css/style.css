@@ -1,0 +1,25 @@
+:root {
+    --background-theme: #333;
+}
+
+body {
+    background-color: var(--background-theme);
+}
+
+#login-form {
+    margin: 0 auto;
+    background-color: #fff;
+    width: 40%;
+    margin-top: 20%;
+    text-align: center;
+    padding: 15px;
+}
+
+#login-form input {
+    width: 50%;
+    margin: 0 auto;
+}
+
+#login-form button {
+    width: 30%;
+}

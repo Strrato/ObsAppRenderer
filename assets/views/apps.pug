@@ -1,0 +1,8 @@
+extends _layout.pug
+
+block content
+    div(id="app-list")
+        - var hasError = typeof(errors) === typeof [] && errors.length > 0;
+        if hasError
+            div(class="alert alert-danger text-center") #{errors.join('<br>')}
+        
