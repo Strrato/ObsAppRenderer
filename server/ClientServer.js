@@ -16,11 +16,14 @@ import bodyParser from 'body-parser';
 import * as Apps from './Apps.js'
 import Database from 'better-sqlite3';
 import StoreFactory from 'better-sqlite3-session-store';
+import { ClientSocket } from './ClientSocket.js';
 const SqliteStore = StoreFactory(session);
 
 dotenv.config()
 
-const sessionsDB = new Database(path.resolve(`./assets/db/sessions.db`));
+let dbPath = path.resolve(process.env.DB_LOCATION);
+Utils.mkdir(dbPath);
+const sessionsDB = new Database(path.resolve(`${dbPath}/sessions.db`));
 
 export class ClientServer {
     constructor() {
@@ -33,6 +36,7 @@ export class ClientServer {
         this.db = new Db();
         this.user = null;
         this.mode = null;
+        this.clientSocket = null;
         this.http = {
             host : null,
             protocol: null
@@ -89,22 +93,16 @@ export class ClientServer {
                 console.log(`Server listen on ${port}`);
                 this.ready = true;
             });
+            
 
-            this.wsServer = new WebSocketServer({
-                noServer: true
-            });
-
-            this.wsServer.on('connection', ws => {
-                ws.on('error', console.error);
-                this.connexions.push(ws);
-            });
+            this.clientSocket = new ClientSocket();
+            
+            this.clientSocket.openSocket('global');
 
             let vm = this;
 
             this.httpServer.on('upgrade', async function upgrade(request, socket, head) {
-                vm.wsServer.handleUpgrade(request, socket, head, function done(ws) {
-                    vm.wsServer.emit('connection', ws, request);
-                });
+                vm.clientSocket.handleUpgrade(request.url.substr(1), request, socket, head);
             });
 
             this._registerRoutes();
@@ -117,8 +115,7 @@ export class ClientServer {
             this.httpServer = null;
         }
         if (this.wsServer !== null) {
-            this.wsServer.close();
-            this.wsServer = null;
+            this.clientSocket.close();
         }
         this.ready = false;
     }
@@ -136,11 +133,11 @@ export class ClientServer {
     }
 
     sendMessage(data){
-        this.wsServer.clients.forEach(function each(client) {
-            if (client.readyState === 1) {
-                client.send(JSON.stringify(data));
-            }
-        });
+        this.clientSocket.sendToAll(data);
+    }
+
+    sendToApp(app, data){
+        this.clientSocket.sendToApp(app, data, this.user);
     }
     
     _configureApp(){
@@ -199,6 +196,14 @@ export class ClientServer {
             }));
         });
 
+        this.app.get('/logout',  (req, res) => {
+            req.logout(err => {
+                if (err) { return next(err); }
+                this.user = null;
+                res.redirect('/');
+            });
+        });
+
         this.app.post('/login', this.rateLimite, passport.authenticate('local-user', {
             successRedirect: '/render/default?mode=normal',
             failureRedirect: '/login?failed=1',
@@ -228,25 +233,30 @@ export class ClientServer {
                 res.redirect(`/render/default?notfound=1&mode=${this.mode}`)
                 return;
             }
-
+            console.log('renering', app);
             return this._renderApp(app, req, res);
         });
 
-        this.app.get('/obs/:app/:token', (req, res, next) => {
+        this.app.get('/obs/:app/:token',passport.authenticate('local-jwt'), (req, res) => {
             let app = Utils.satanize(req.params.app);
+            /*
             passport.authenticate('local-jwt', (err, user, info) => {
+                console.log(err);
                 if (err) {
                     return next(err);
                 }
                 if (!user){
                     return res.redirect('/login');
                 }
-                return res.redirect(`/render/${app}`);
-            });
+            });*/
+            return res.redirect(`/render/${app}`);
         });
 
         if (this.debug){
-            this.app.post('/simulate', (req, res) => {
+            this.app.post('/simulate/:app/:user', (req, res) => {
+                let app = Utils.satanize(req.params.app);
+                this.user = this.db.getUserByName(Utils.satanize(req.params.user));
+                
                 let message = req.body.message;
                 let author = {
                     id : 42,
@@ -264,14 +274,15 @@ export class ClientServer {
                     ],
                     color : '#ff00ff'
                 };
-                this.sendMessage({
+
+                this.sendToApp(app, {
                     type   : 'message',
                     message: message,
                     author : author,
                     source : 'twitch'
                 });
 
-                this.sendMessage({
+                this.sendToApp(app, {
                     type : 'image',
                     id : 42,
                     url : 'https://static-cdn.jtvnw.net/jtv_user_pictures/cd4b811a-0045-4ce0-bb50-271288cb0280-profile_image-300x300.png',
@@ -295,6 +306,10 @@ export class ClientServer {
         res.redirect('/login');
     }
 
+    _isAdmin(){
+        return this.user && this.user.scopes.indexOf('admin') > -1;
+    }
+
     _tplParams(params){
         params = params || {};
         const defaultParams = {
@@ -305,6 +320,8 @@ export class ClientServer {
             host    : this.http.host,
             protocol: this.http.protocol,
             appList : this.appList,
+            Utils   : Utils,
+            isAdmin : this._isAdmin()
         };
         return {
             ...defaultParams,
@@ -314,6 +331,7 @@ export class ClientServer {
 
     _renderApp(app, req, res){
         try{
+            this.clientSocket.openSocket(app, this.user);
             return Apps.getApp(app, this.user, this.app, this._tplParams()).render(req, res);
         }catch(e){
             console.error(e);

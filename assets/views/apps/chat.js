@@ -1,4 +1,4 @@
-const SERVER_URL = "ws://localhost:4242";
+const SERVER_URL = "ws://localhost:4242/"+appChan;
 const ws = new WebSocket(SERVER_URL);
 
 let init = true;
@@ -9,6 +9,10 @@ ws.onerror = err => {
 
 ws.onopen = () => {
     console.log('Socket open');
+    $('#content').html('<div style="text-align: center; color: white; background-color: green; padding: 10px">Connected ! </div>');
+    setTimeout(() => {
+        $('#content').html('');
+    }, 1000);
 };
 
 ws.onmessage = event => {
@@ -57,7 +61,7 @@ let messageBackground = "#248bf5";
 let streamerColor = "#ffd700";
 let modoColor = "#ffd700";
 let fontSize = "24px";
-let useUserColor = false;
+let useUserColor = true;
 let idStreamer = currentUser.username;
 let userCache = {};
 let userIdsSearch = [];
@@ -68,7 +72,7 @@ let ignoreUsers = [];
 let cacheCreated = new Date();
 
 function setViewPort(){
-    $('#render-chat').css('height', window.innerHeight+'px');
+    $('#app-container').css('height', window.innerHeight+'px');
 }
 
 $(function(){
@@ -203,6 +207,8 @@ function addMessage(author, message, msgId, badges, isModerator, source) {
     if (isModerator){
         styleUserColor += "border: .15em solid " + modoColor + ";" ;
     }
+
+    console.log('styleUserColor', styleUserColor);
 
     let avatar = author.avatar ? author.avatar : 'https://c.tenor.com/wpSo-8CrXqUAAAAi/loading-loading-forever.gif';
     

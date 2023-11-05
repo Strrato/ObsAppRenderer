@@ -10,12 +10,24 @@ import jsonwebtoken from 'jsonwebtoken'
 dotenv.config()
 
 const USER_TEMPLATE = {
-    id : 0,
-    username : null,
-    password : null,
-    scopes : [],
-    token : null
+    id           : 0,
+    username     : null,
+    password     : null,
+    scopes       : [],
+    token        : null,
+    profile      : null,
+    registerToken: null,
+
 };
+
+const PROFILE_TEMPLATE = {
+    id      : 0,
+    user    : null,
+    twitch  : null,
+    restream: null,
+};
+
+const JOIN_PROFILE = `LEFT JOIN ${Tables.profiles.name} ON ${Tables.users.name}.${Tables.users.fields.id} = ${Tables.profiles.name}.${Tables.profiles.fields.user}`;
 
 export default class Db {
     constructor(){
@@ -25,7 +37,10 @@ export default class Db {
             dbParams.verbose = console.log;
         }
 
-        this.db = new Database(path.resolve(`./assets/db/${process.env.DB_NAME}`), dbParams);
+        let dbPath = path.resolve(process.env.DB_LOCATION);
+        Utils.mkdir(dbPath);
+
+        this.db = new Database(path.resolve(`${dbPath}/${process.env.DB_NAME}`), dbParams);
         this.create();
     }
 
@@ -37,11 +52,26 @@ export default class Db {
                 ${Tables.users.fields.password} TEXT NOT NULL,
                 ${Tables.users.fields.salt} TEXT NOT NULL,
                 ${Tables.users.fields.scopes} TEXT,
-                ${Tables.users.fields.token} TEXT
+                ${Tables.users.fields.token} TEXT,
+                ${Tables.users.fields.registerToken} TEXT
             )
         `;
 
         let sql = `CREATE TABLE IF NOT EXISTS ${Tables.users.name} ${def}`;
+
+        this.db.exec(sql);
+
+        def = `
+            (
+                ${Tables.profiles.fields.id} INTEGER PRIMARY KEY AUTOINCREMENT,
+                ${Tables.profiles.fields.user} INTEGER NOT NULL,
+                ${Tables.profiles.fields.twitch} TEXT,
+                ${Tables.profiles.fields.restream} TEXT,
+                FOREIGN KEY(${Tables.profiles.fields.user}) REFERENCES ${Tables.users.name}(${Tables.users.fields.id})
+            )
+        `;
+
+        sql = `CREATE TABLE IF NOT EXISTS ${Tables.profiles.name} ${def}`;
 
         this.db.exec(sql);
     }
@@ -62,11 +92,30 @@ export default class Db {
             user.salt     = row[Tables.users.fields.salt];
         }
 
+        user.profile = this.rowToProfile(row);
+
         return user;
     }
 
+    rowToProfile(row){
+        if (!row){
+            return false;
+        }
+        let profile = Object.assign({}, PROFILE_TEMPLATE);
+        for(let key in Tables.profiles.fields){
+            profile[key] = row[Tables.profiles.fields[key]];
+        }
+        
+        return profile;
+    }
+
     getUserById(id){
-        let sql = `SELECT * FROM ${Tables.users.name} WHERE ${Tables.users.fields.id} = ?`;
+        let sql = `
+            SELECT * 
+            FROM ${Tables.users.name} 
+            ${JOIN_PROFILE}
+            WHERE ${Tables.users.fields.id} = ?
+        `;
         let stmt = this.db.prepare(sql);
         let row = stmt.get(id);
         return this.rowToUser(row);
@@ -99,7 +148,12 @@ export default class Db {
 
     getUserByName(username, full){
         full = full === true;
-        let sql = `SELECT * FROM ${Tables.users.name} WHERE ${Tables.users.fields.username} = ?`;
+        let sql = `
+            SELECT * 
+            FROM ${Tables.users.name} 
+            ${JOIN_PROFILE}
+            WHERE ${Tables.users.fields.username} = ?
+        `;
         let stmt = this.db.prepare(sql);
         let row = stmt.get(Utils.satanize(username));
         return this.rowToUser(row, full);
@@ -189,7 +243,29 @@ export default class Db {
 
             let id = res.lastInsertRowid;
 
+            sql = `INSERT INTO ${Tables.profiles.name} (${Tables.profiles.fields.user}) VALUES(?)`
+            stmt = this.db.prepare(sql);
+            let res2 = stmt.run(id);
+
             return this.getUserById(id);
+        }catch(e){
+            console.error(e);
+            return false;
+        }
+    }
+
+    updateProfile(user){
+        try {
+
+            if (!user.profile){
+                throw new Error('Profile must be loaded before update');
+            }
+
+            let sql = `UPDATE ${Tables.profiles.name} SET ${Tables.profiles.fields.twitch} = ?, ${Tables.profiles.fields.restream} = ? WHERE ${Tables.profiles.fields.id} = ?`;
+            let stmt = this.db.prepare(sql);
+            
+            let res = stmt.run(user.profile.twitch, user.profile.restream, user.profile.id);
+            return res.changes > 0;
         }catch(e){
             console.error(e);
             return false;

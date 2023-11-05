@@ -1,13 +1,13 @@
 {
-  "name": "restreamchatapi",
+  "name": "obsapprenderer",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon -e js --delay 2500ms --ignore 'assets/views/apps/*.js' -L index.js"
+    "dev": "nodemon -e js --delay 2500ms --ignore 'assets/views/**/*.js' -L index.js"
   },
-  "author": "",
+  "author": "Strato",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.6.0",

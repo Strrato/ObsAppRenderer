@@ -12,6 +12,7 @@ const reader = readline.createInterface({
 const commandList = {
     addUser : addUser,
     testMessage : testMessage,
+    testMessageAuto: testMessageAuto
 };
 
 function defined(variable){
@@ -63,8 +64,23 @@ async function addUser(){
 }
 
 async function testMessage(){
+    let app = await askAsync('App ?');
+    let user = await askAsync('User ?');
     let message = await askAsync('Message ?');
-    axios.post('http://localhost:4242/simulate', {
+    axios.post(`http://localhost:4242/simulate/${app}/${user}`, {
+        message : message
+    }).then(res => {
+        console.log(res);
+    });
+
+    return askCommand();
+}
+
+async function testMessageAuto(){
+    let app = 'chat';
+    let user = 'Strato';
+    let message = 'Est velit incididunt in do adipisicing ullamco pariatur enim cupidatat duis dolor cillum.';
+    axios.post(`http://localhost:4242/simulate/${app}/${user}`, {
         message : message
     }).then(res => {
         console.log(res);

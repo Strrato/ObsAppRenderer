@@ -1,3 +1,5 @@
+import * as Utils from './../server/Utils.js'
+
 export default class Chat {
     constructor(user, app, defaultParams){
         this.user = user;
@@ -7,7 +9,8 @@ export default class Chat {
 
     render(req, res){
         return res.render('apps/chat', this._mergeParams({
-            user : this.user
+            user : this.user,
+            chan : Utils.getChan(this.user, 'chat')
         }));
     }
 

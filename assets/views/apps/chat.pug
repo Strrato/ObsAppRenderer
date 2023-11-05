@@ -4,15 +4,20 @@ block head
     link(href="/chat.css" rel="stylesheet")
 
 block content
-    div(id="render-chat")
+    div(id="app-container")
         div(id="content")
             if ui
                 div.text-center
                     i.fa.fa-spinner.fa-spin
+                div(aria-live="polite" aria-atomic="true" class="d-flex justify-content-center align-items-center w-100")
+                    div(id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true")
+                    div(class="toast-body") Connected !
 
 block scripts
     script.
         var currentUser = !{JSON.stringify(user)};
+    script.
+        var appChan = "#{chan}";
     script(type="text/javascript")
         include chat.js
         

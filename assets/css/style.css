@@ -32,6 +32,10 @@ body {
     text-align: center;
 }
 
+.profile-actions {
+    float: left;
+}
+
 .col-logged .card + .card {
     margin-top: 20px;
 }
