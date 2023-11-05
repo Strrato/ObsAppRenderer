@@ -41,7 +41,6 @@ export class ClientSocket{
         let vm = this;
         if (Utils.defined(this.wss[chan])){
             this.wss[chan].handleUpgrade(request, socket, head, function done(ws) {
-                console.log('connection url', request.url);
                 vm.wss[chan].emit('connection', ws, request);
             });
         }
@@ -63,7 +62,6 @@ export class ClientSocket{
         console.log('sending to channel', chan);
         if (Utils.defined(this.wss[chan])){
             this.wss[chan].clients.forEach(function each(client) {
-                console.log(client.readyState);
                 if (client.readyState === 1) {
                     client.send(JSON.stringify(data));
                 }
