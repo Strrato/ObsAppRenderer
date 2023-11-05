@@ -1,0 +1,18 @@
+extends ../_layout.pug
+
+block head
+    link(href="/chat.css" rel="stylesheet")
+
+block content
+    div(id="render-chat")
+        div(id="content")
+            if ui
+                div.text-center
+                    i.fa.fa-spinner.fa-spin
+
+block scripts
+    script.
+        var currentUser = !{JSON.stringify(user)};
+    script(type="text/javascript")
+        include chat.js
+        

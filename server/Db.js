@@ -5,13 +5,16 @@ import * as dotenv from 'dotenv'
 import * as bcrypt from 'bcrypt'
 import * as Utils from './Utils.js'
 import Tables from "./Tables.js";
+import jsonwebtoken from 'jsonwebtoken'
+
 dotenv.config()
 
 const USER_TEMPLATE = {
     id : 0,
     username : null,
     password : null,
-    scopes : []
+    scopes : [],
+    token : null
 };
 
 export default class Db {
@@ -33,7 +36,8 @@ export default class Db {
                 ${Tables.users.fields.username} TEXT NOT NULL,
                 ${Tables.users.fields.password} TEXT NOT NULL,
                 ${Tables.users.fields.salt} TEXT NOT NULL,
-                ${Tables.users.fields.scopes} TEXT
+                ${Tables.users.fields.scopes} TEXT,
+                ${Tables.users.fields.token} TEXT
             )
         `;
 
@@ -47,15 +51,15 @@ export default class Db {
             return false;
         }
         full = full === true;
-        console.log(row);
-        let user = Object.assign({}, USER_TEMPLATE);
-        let scopes = row[Tables.users.fields.scopes];
-        user.id = row[Tables.users.fields.id];
+        let user          = Object.assign({}, USER_TEMPLATE);
+        let scopes        = row[Tables.users.fields.scopes];
+        user.id       = row[Tables.users.fields.id];
         user.username = row[Tables.users.fields.username];
-        user.scopes = scopes ? scopes.split(' ') : [];
+        user.token    = row[Tables.users.fields.token];
+        user.scopes   = scopes ? scopes.split(' ') : [];
         if (full){
             user.password = row[Tables.users.fields.password];
-            user.salt = row[Tables.users.fields.salt];
+            user.salt     = row[Tables.users.fields.salt];
         }
 
         return user;
@@ -75,6 +79,16 @@ export default class Db {
             if (!user || !this._checkPassword(password, user.password)){
                 return false;
             }
+
+            if (user.token){
+                try {
+                    jsonwebtoken.verify(user.token, process.env.TOKEN_SECRET);
+                }catch(e){
+                    this.setToken(user);
+                }
+            }else{
+                this.setToken(user);
+            }
     
             return user;
         }catch(e){
@@ -89,6 +103,75 @@ export default class Db {
         let stmt = this.db.prepare(sql);
         let row = stmt.get(Utils.satanize(username));
         return this.rowToUser(row, full);
+    }
+
+    updateUser(user){
+        try {
+            let sql = `UPDATE ${Tables.users.name} SET ${Tables.users.fields.scopes} = ?, ${Tables.users.fields.token} = ? WHERE ${Tables.users.fields.id} = ?`;
+            let stmt = this.db.prepare(sql);
+            let dbScopes = user.scopes.join(' ');
+            let res = stmt.run(dbScopes, user.token, user.id);
+            return res.changes > 0;
+        }catch(e){
+            console.error(e);
+            return false;
+        }
+    }
+
+    updatePassword(user, plainPassword){
+        try {
+            let sql = `UPDATE ${Tables.users.name} SET ${Tables.users.fields.password} = ?, ${Tables.users.fields.salt} = ? WHERE ${Tables.users.fields.id} = ?`;
+            let stmt = this.db.prepare(sql);
+
+            let salt = this._genSalt();
+            let hashPass = this._hashPassword(plainPassword, salt);
+
+            let res = stmt.run(hashPass, salt, user.id);
+
+            return res.changes > 0 && this.unsetToken(user);
+        }catch(e){
+            console.error(e);
+            return false;
+        }
+    }
+
+    setToken(user){
+        try {
+            let sql = `UPDATE ${Tables.users.name} SET ${Tables.users.fields.token} = ? WHERE ${Tables.users.fields.id} = ?`;
+            let stmt = this.db.prepare(sql);
+
+            let res = stmt.run(this._genToken(user), user.id);
+            return res.changes > 0;
+        }catch(e){
+            console.error(e);
+            return false;
+        }
+    }
+
+    unsetToken(user){
+        try {
+            let sql = `UPDATE ${Tables.users.name} SET ${Tables.users.fields.token} = ? WHERE ${Tables.users.fields.id} = ?`;
+            let stmt = this.db.prepare(sql);
+
+            let res = stmt.run(null, user.id);
+            return res.changes > 0;
+        }catch(e){
+            console.error(e);
+            return false;
+        }
+    }
+
+    async checkToken(token){
+        return await new Promise(resolve => {
+            jsonwebtoken.verify(token, process.env.TOKEN_SECRET, (err, decoded) => {
+                if (err){
+                    console.error(err);
+                    resolve(err.message);
+                }else {
+                    return this.getUserById(decoded.userId);
+                }
+            });
+        });
     }
 
     addUser(username, password, scopes){
@@ -124,4 +207,10 @@ export default class Db {
     _genSalt(){
         return bcrypt.genSaltSync(parseInt(process.env.SALT_LENGTH));
     }
+
+    _genToken(user){
+        return jsonwebtoken.sign({ userId: user.id }, process.env.TOKEN_SECRET, { expiresIn : '7d' })
+    }
+    
+
 }

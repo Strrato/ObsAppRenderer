@@ -1,0 +1,93 @@
+* { box-sizing: border-box; }
+
+html, body { height: 100%; overflow: hidden; background: none; background-color: transparent; }
+
+#content {
+    border-radius: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    font-family: "SanFrancisco";
+    margin: 0 auto 1rem;
+    padding: 0.5rem 1.5rem;
+    font-size: 25px;
+}
+
+#content .message-row {
+    border-radius: 1.15rem;
+    line-height: 1.25;
+    max-width: 90%;
+    padding: 0.5rem .875rem;
+    position: relative;
+    word-wrap: break-word;
+    display: inline-block;
+    align-self: flex-end;
+    width: 80%;
+    overflow: hidden;
+    background-color: #000;
+    color: #fff;
+    margin: 0.5rem 0;
+    min-height: 50px;
+    font-family: Roboto; 
+    font-weight: 400;
+}
+
+#content .message-image {
+    display: inline-block;
+    max-width: 10%;
+    vertical-align: top;
+    margin-top: 5px;
+    border-radius: 50%;
+}
+
+#content .message-image img {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+}
+
+#content .message-row::before,
+#content .message-row::after {
+    bottom: -0.1rem;
+    content: "";
+    height: 1rem;
+    position: absolute;
+}
+
+#content > div { 
+    position: relative; 
+    text-align: right;
+    padding-top: 15px; 
+}
+
+.colon { display: none; }
+.action { font-style: italic; }
+
+#content .badges 
+{
+    float: left; 
+    margin-right: 10px;
+}
+#content .badges > img {
+    width: 25px; 
+    height: 25px;
+    margin-right: 5px;
+}
+
+#content .badges > img:last-child {
+    margin-right: 0;
+}
+
+#content .name,
+#content .message-content {
+    float: left; 
+    text-shadow: 0 0 1px #000, 0 0 3px #000;
+}
+
+#content .name {
+    word-break: break-all;
+}
+
+#content .message-content {
+    margin-left: 5px;
+    text-align: left;
+}

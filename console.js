@@ -1,5 +1,6 @@
 import * as readline from "readline";
 import Db from "./server/Db.js";
+import axios from "axios";
 
 const db = new Db();
 
@@ -10,7 +11,7 @@ const reader = readline.createInterface({
 
 const commandList = {
     addUser : addUser,
-
+    testMessage : testMessage,
 };
 
 function defined(variable){
@@ -59,6 +60,17 @@ async function addUser(){
     }
     
     return askCommand();   
+}
+
+async function testMessage(){
+    let message = await askAsync('Message ?');
+    axios.post('http://localhost:4242/simulate', {
+        message : message
+    }).then(res => {
+        console.log(res);
+    });
+
+    return askCommand();
 }
 
 askCommand();

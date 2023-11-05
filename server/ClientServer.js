@@ -8,12 +8,19 @@ import cors from 'cors';
 import * as dotenv from 'dotenv'
 import passport from "passport";
 import LocalStrategy from 'passport-local';
+import JwtStrategy from 'passport-jwt';
 import Tables from "./Tables.js";
 import Db from "./Db.js";
 import * as Utils from './Utils.js'
 import bodyParser from 'body-parser';
+import * as Apps from './Apps.js'
+import Database from 'better-sqlite3';
+import StoreFactory from 'better-sqlite3-session-store';
+const SqliteStore = StoreFactory(session);
 
 dotenv.config()
+
+const sessionsDB = new Database(path.resolve(`./assets/db/sessions.db`));
 
 export class ClientServer {
     constructor() {
@@ -25,6 +32,11 @@ export class ClientServer {
         this.appList = process.env.APP_LIST.split(' ');
         this.db = new Db();
         this.user = null;
+        this.mode = null;
+        this.http = {
+            host : null,
+            protocol: null
+        };
         this.rateLimite = rateLimit({
             windowMs: 15 * 60 * 1000, // 15 minutes
             limit: 10, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
@@ -32,13 +44,28 @@ export class ClientServer {
             legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
         });
 
-        passport.use(new LocalStrategy({
+        this.debug = process.env.APP_ENV.indexOf('debug') > -1;
+
+        passport.use('local-user', new LocalStrategy({
             usernameField : Tables.users.fields.username,
             passwordField : Tables.users.fields.password
         }, (username, password, done) => {
             const user = this.db.authUser(username, password);
             if (!user){
                 return done(null, false, { message : 'User invalid' });
+            }
+            return done(null, user);
+        }));
+
+        passport.use('local-jwt', new JwtStrategy.Strategy({
+            secretOrKey : process.env.TOKEN_SECRET,
+            jwtFromRequest : (req) => {
+                return req.params.token;
+            }
+        }, (data, done) => {
+            const user = this.db.getUserById(data.userId);
+            if (!user){
+                return done(null, false, { message : 'Invalid token, login again to refresh' });
             }
             return done(null, user);
         }));
@@ -108,26 +135,14 @@ export class ClientServer {
         });
     }
 
-    sendMessage(message, user){
+    sendMessage(data){
         this.wsServer.clients.forEach(function each(client) {
-            if (client.readyState === WebSocketServer.OPEN) {
-                let data = {
-                    message    : message.content,
-                    messageId  : message.id,
-                    isAction   : message.isAction,
-                    isModerator: message.isModerator,
-                    name       : user.name,
-                    avatar     : user.avatar,
-                    userid     : user.id,
-                    badges     : user.badges,
-                    color      : user.color,
-                };
-
-                client.send(data);
+            if (client.readyState === 1) {
+                client.send(JSON.stringify(data));
             }
         });
-        
     }
+    
     _configureApp(){
         this.app.use(cors({
             origin: '*'
@@ -136,7 +151,10 @@ export class ClientServer {
         this.app.use(session({
             secret: process.env.SESSION_SECRET,
             resave: false,
-            saveUninitialized: false
+            saveUninitialized: false,
+            store : new SqliteStore({
+                client: sessionsDB
+            })
         }));
 
         this.app.use(bodyParser.json());
@@ -146,6 +164,17 @@ export class ClientServer {
         this.app.use(flash());
         this.app.use(express.static(path.resolve('./assets/css')));
         this.app.use(express.static(path.resolve('./assets/meta')));
+        this.app.use('/fonts', express.static(path.resolve('./assets/fonts')));
+
+        this.app.use((req, res, next) => {
+            if (Utils.defined(req.user)){
+                this.user = req.user;
+            }
+            this.mode = req.query.mode ? Utils.satanize(req.query.mode) : 'stream';
+            this.http.host = req.headers.host;
+            this.http.protocol = req.protocol;
+            next();
+        });
 
         this.app.set('views', [path.resolve("./assets/views"), path.resolve("./apps")]);
         this.app.set('view engine', 'pug');
@@ -166,23 +195,24 @@ export class ClientServer {
                 error : hasError,
                 loginField : Tables.users.fields.username,
                 passField : Tables.users.fields.password,
+                mode : 'normal'
             }));
         });
 
-        this.app.post('/login', this.rateLimite, passport.authenticate('local', {
-            successRedirect: '/render/default',
+        this.app.post('/login', this.rateLimite, passport.authenticate('local-user', {
+            successRedirect: '/render/default?mode=normal',
             failureRedirect: '/login?failed=1',
             failureFlash: true
         }));
 
         this.app.get('/render/:app', this._authenticated, (req, res) => {
-            this._handleReq(req);
+
             let app = Utils.satanize(req.params.app);
+            let mode = req.query.mode ? Utils.satanize(req.query.mode) : 'stream';
 
             if (!app || app === 'default'){
                 
                 let params = {
-                    list : this.appList,
                     errors : []
                 };
                 
@@ -195,16 +225,67 @@ export class ClientServer {
             }
 
             if (!this._isValidApp(app)){
-                res.redirect('/render/default?notfound=1')
+                res.redirect(`/render/default?notfound=1&mode=${this.mode}`)
                 return;
             }
 
-
+            return this._renderApp(app, req, res);
         });
+
+        this.app.get('/obs/:app/:token', (req, res, next) => {
+            let app = Utils.satanize(req.params.app);
+            passport.authenticate('local-jwt', (err, user, info) => {
+                if (err) {
+                    return next(err);
+                }
+                if (!user){
+                    return res.redirect('/login');
+                }
+                return res.redirect(`/render/${app}`);
+            });
+        });
+
+        if (this.debug){
+            this.app.post('/simulate', (req, res) => {
+                let message = req.body.message;
+                let author = {
+                    id : 42,
+                    name : 'DebugMan',
+                    avatar : 'https://static-cdn.jtvnw.net/jtv_user_pictures/cd4b811a-0045-4ce0-bb50-271288cb0280-profile_image-300x300.png',
+                    badges : [
+                        {
+                            type : 'artist',
+                            url : 'https://assets.help.twitch.tv/article/img/000002399-05.png'
+                        },
+                        {
+                            type : 'vip',
+                            url : 'https://static-cdn.jtvnw.net/badges/v1/b817aba4-fad8-49e2-b88a-7cc744dfa6ec/3'
+                        }
+                    ],
+                    color : '#ff00ff'
+                };
+                this.sendMessage({
+                    type   : 'message',
+                    message: message,
+                    author : author,
+                    source : 'twitch'
+                });
+
+                this.sendMessage({
+                    type : 'image',
+                    id : 42,
+                    url : 'https://static-cdn.jtvnw.net/jtv_user_pictures/cd4b811a-0045-4ce0-bb50-271288cb0280-profile_image-300x300.png',
+                    source : 'twitch'
+                });
+
+                res.status(200).send('Ok');
+            });
+        }
+        
     }
 
     _isValidApp(appName){
-        return this.appList.indexOf(appName.toLowerCase()) > -1;
+        return this.appList.indexOf(appName.toLowerCase()) > -1 && this.user && this.user.scopes.indexOf(appName.toLowerCase()) > -1;
     }
 
     _authenticated(req, res, next){
@@ -214,22 +295,30 @@ export class ClientServer {
         res.redirect('/login');
     }
 
-    _handleReq(req){
-        this.user = req.user;
-    }
-
     _tplParams(params){
         params = params || {};
         const defaultParams = {
             title   : 'Obs App renderer',
-            user    : this.user,
             appTitle: 'Obs App renderer',
-            mode    : 'admin'
+            user    : this.user,
+            mode    : this.mode,
+            host    : this.http.host,
+            protocol: this.http.protocol,
+            appList : this.appList,
         };
         return {
             ...defaultParams,
             ...params
         };
+    }
+
+    _renderApp(app, req, res){
+        try{
+            return Apps.getApp(app, this.user, this.app, this._tplParams()).render(req, res);
+        }catch(e){
+            console.error(e);
+            return res.redirect(`/render/default?notfound=1&mode=${this.mode}`);
+        }
     }
 
 };

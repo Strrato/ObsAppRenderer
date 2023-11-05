@@ -4,10 +4,8 @@ block content
     div(id="login-form")
         h3 Login
         form(action="/login" method="post")
-            label(for="username" class="form-label") Username
             input(class="form-control" id="username" type="text" name=loginField placeholder="Username" required)
-            label(for="password" class="form-label") Password
-            input(class="form-control" id="password" type="password" name=passField placeholder="Password" required)
+            input(class="form-control mt-3" id="password" type="password" name=passField placeholder="Password" required)
             if error
                 div(class="alert alert-danger") Invalid user
-            button(type="submit" value="login" class="btn btn-primary") Login
+            button(type="submit" value="login" class="btn btn-primary mt-3") Login

@@ -7,6 +7,7 @@ const Tables = {
             password: 'password',
             salt    : 'salt',
             scopes  : 'scopes',
+            token   : 'token',
         }
     }
 };
