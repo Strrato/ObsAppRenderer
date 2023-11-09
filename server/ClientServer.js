@@ -32,7 +32,7 @@ export class ClientServer {
         this.connexions = [];
         this.ready = false;
         this.app = express();
-        this.appList = process.env.APP_LIST.split(' ');
+        this.appList = [];
         this.db = new Db();
         this.user = null;
         this.mode = null;
@@ -166,7 +166,10 @@ export class ClientServer {
         this.app.use((req, res, next) => {
             if (Utils.defined(req.user)){
                 this.user = req.user;
+            }else {
+                this.user = null;
             }
+            this.appList = this._getUserAppList();
             this.mode = req.query.mode ? Utils.satanize(req.query.mode) : 'stream';
             this.http.host = req.headers.host;
             this.http.protocol = req.protocol;
@@ -194,6 +197,34 @@ export class ClientServer {
                 passField : Tables.users.fields.password,
                 mode : 'normal'
             }));
+        });
+
+        this.app.get('/resetpw/:token', this.rateLimite,  (req, res) => {
+            const user = this.db.getUserByRegisterToken(Utils.satanize(req.params.token));
+            if (!user){
+                return res.status(404).send('User not found');
+            }
+            res.render('resetpw', this._tplParams({ 
+                user : user,
+                mode : 'normal'
+            }));
+        });
+
+        this.app.post('/resetpw/:token', this.rateLimite,  (req, res) => {
+            const user = this.db.getUserByRegisterToken(Utils.satanize(req.params.token));
+            if (!user){
+                return res.status(404).send('User not found');
+            }
+            const pw = req.body.password;
+            if (!pw){
+                return res.status(401).send('Password missing');
+            }
+
+            if (!this.db.updatePassword(user, pw)){
+                return res.status(401).send('Error updating password');
+            }
+
+            return res.redirect('/login');
         });
 
         this.app.get('/logout',  (req, res) => {
@@ -239,17 +270,24 @@ export class ClientServer {
 
         this.app.get('/obs/:app/:token',passport.authenticate('local-jwt'), (req, res) => {
             let app = Utils.satanize(req.params.app);
-            /*
-            passport.authenticate('local-jwt', (err, user, info) => {
-                console.log(err);
-                if (err) {
-                    return next(err);
-                }
-                if (!user){
-                    return res.redirect('/login');
-                }
-            });*/
             return res.redirect(`/render/${app}`);
+        });
+
+        this.app.post('/admin/addUser', this._authenticated, this._admin, (req, res) => {
+            let username = req.body.username;
+            let scopes = req.body.scopes || '';
+            scopes = scopes.split(' ');
+            
+            if (!username){
+                res.status(401).send('Missing username');
+            }
+
+            const newUser = this.db.registerUser(username, scopes);
+            const results = {
+                registerUrl : this._getUrl('/resetpw/' + newUser.registerToken, '')
+            };
+
+            return res.status(200).send(JSON.stringify(results));
         });
 
         if (this.debug){
@@ -306,6 +344,13 @@ export class ClientServer {
         res.redirect('/login');
     }
 
+    _admin(req, res, next){
+        if (req.isAuthenticated() && req.user && req.user.scopes.indexOf('admin') > -1) {
+            return next();
+        }
+        return res.status(401).send('UNAUTHORIZED');
+    }
+
     _isAdmin(){
         return this.user && this.user.scopes.indexOf('admin') > -1;
     }
@@ -337,6 +382,27 @@ export class ClientServer {
             console.error(e);
             return res.redirect(`/render/default?notfound=1&mode=${this.mode}`);
         }
+    }
+
+    _getUserAppList(){
+        let list = [];
+
+        if (this.user !== null){
+            list = process.env.APP_LIST.split(' ');
+            for(let i in list){
+                let app = list[i];
+                if (this.user.scopes.indexOf(app.toLowerCase()) === -1){
+                    list.splice(i, 1);
+                }
+            }
+        }
+
+        return list;
+    }
+
+    _getUrl(route, mode){
+        mode = Utils.defined(mode) ? mode : 'stream';
+        return this.http.protocol + '://' + this.http.host + '/' + route + '?mode=' + mode;
     }
 
 };

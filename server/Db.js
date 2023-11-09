@@ -121,6 +121,17 @@ export default class Db {
         return this.rowToUser(row);
     }
 
+    getUserByRegisterToken(token){
+        let sql = `
+            SELECT * 
+            FROM ${Tables.users.name} 
+            WHERE ${Tables.users.fields.registerToken} = ?
+        `;
+        let stmt = this.db.prepare(sql);
+        let row = stmt.get(Utils.satanize(token));
+        return this.rowToUser(row);
+    }
+
     authUser(username, password){
         try {
             const user = this.getUserByName(username, true);
@@ -240,6 +251,31 @@ export default class Db {
             let hashPass = this._hashPassword(password, salt);
             let stmt = this.db.prepare(sql);
             let res = stmt.run(Utils.satanize(username), hashPass, salt, dbScopes);
+
+            let id = res.lastInsertRowid;
+
+            sql = `INSERT INTO ${Tables.profiles.name} (${Tables.profiles.fields.user}) VALUES(?)`
+            stmt = this.db.prepare(sql);
+            let res2 = stmt.run(id);
+
+            return this.getUserById(id);
+        }catch(e){
+            console.error(e);
+            return false;
+        }
+    }
+
+    registerUser(username, scopes){
+        try {
+            if (this.getUserByName(username) !== false){
+                throw new Error("Username already exists");
+            }
+
+            let sql = `INSERT INTO ${Tables.users.name} (${Tables.users.fields.username}, ${Tables.users.fields.scopes}, ${Tables.users.fields.registerToken}) VALUES (?,?,?)`;
+            let dbScopes = scopes.join(' ');
+            let rToken = jsonwebtoken.sign({ username: username, salt: this._genSalt() }, process.env.TOKEN_SECRET, { expiresIn : '7d' })
+            let stmt = this.db.prepare(sql);
+            let res = stmt.run(Utils.satanize(username), dbScopes, rToken);
 
             let id = res.lastInsertRowid;
 
