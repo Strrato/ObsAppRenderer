@@ -19,6 +19,14 @@ export class ClientSocket{
         }
     }
 
+    getSocket(name, user){
+        const chan = Utils.getChan(user, name);
+        if (Utils.defined(this.wss[chan])){
+            return this.wss[chan];
+        }
+        return null;
+    }
+
     closeSocket(name, user){
         const chan = Utils.getChan(user, name);
         if (Utils.defined(this.wss[chan])){

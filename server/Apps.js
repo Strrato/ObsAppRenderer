@@ -4,6 +4,6 @@ const mapping = {
     chat : Chat,
 }
 
-export function getApp(name, user, app, defaultParams){
-    return new mapping[name](user, app, defaultParams);
+export function getApp(name, user, app, ws, defaultParams){
+    return new mapping[name](user, app, ws, defaultParams);
 };

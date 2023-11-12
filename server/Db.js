@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt'
 import * as Utils from './Utils.js'
 import Tables from "./Tables.js";
 import jsonwebtoken from 'jsonwebtoken'
+import UsernameExistsError from './Errors/UsernameExistsError.js';
 
 dotenv.config()
 
@@ -49,8 +50,8 @@ export default class Db {
             (
                 ${Tables.users.fields.id} INTEGER PRIMARY KEY AUTOINCREMENT,
                 ${Tables.users.fields.username} TEXT NOT NULL,
-                ${Tables.users.fields.password} TEXT NOT NULL,
-                ${Tables.users.fields.salt} TEXT NOT NULL,
+                ${Tables.users.fields.password} TEXT,
+                ${Tables.users.fields.salt} TEXT,
                 ${Tables.users.fields.scopes} TEXT,
                 ${Tables.users.fields.token} TEXT,
                 ${Tables.users.fields.registerToken} TEXT
@@ -87,6 +88,7 @@ export default class Db {
         user.username = row[Tables.users.fields.username];
         user.token    = row[Tables.users.fields.token];
         user.scopes   = scopes ? scopes.split(' ') : [];
+        user.registerToken = row[Tables.users.fields.registerToken];
         if (full){
             user.password = row[Tables.users.fields.password];
             user.salt     = row[Tables.users.fields.salt];
@@ -185,13 +187,13 @@ export default class Db {
 
     updatePassword(user, plainPassword){
         try {
-            let sql = `UPDATE ${Tables.users.name} SET ${Tables.users.fields.password} = ?, ${Tables.users.fields.salt} = ? WHERE ${Tables.users.fields.id} = ?`;
+            let sql = `UPDATE ${Tables.users.name} SET ${Tables.users.fields.password} = ?, ${Tables.users.fields.salt} = ?, ${Tables.users.fields.registerToken} = ? WHERE ${Tables.users.fields.id} = ?`;
             let stmt = this.db.prepare(sql);
 
             let salt = this._genSalt();
             let hashPass = this._hashPassword(plainPassword, salt);
 
-            let res = stmt.run(hashPass, salt, user.id);
+            let res = stmt.run(hashPass, salt, null, user.id);
 
             return res.changes > 0 && this.unsetToken(user);
         }catch(e){
@@ -260,8 +262,10 @@ export default class Db {
 
             return this.getUserById(id);
         }catch(e){
-            console.error(e);
-            return false;
+            if (e.indexOf('exists') > -1){
+                throw new UsernameExistsError('Username already used');
+            }
+            console.log(e);
         }
     }
 
@@ -285,8 +289,11 @@ export default class Db {
 
             return this.getUserById(id);
         }catch(e){
-            console.error(e);
-            return false;
+            console.log(e);
+            if (e.message.indexOf('exists') > -1){
+                throw new UsernameExistsError('Username already used');
+            }
+            console.log(e);
         }
     }
 

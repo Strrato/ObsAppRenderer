@@ -1,0 +1,31 @@
+extends _layout.pug
+
+block content
+    div(id="register-form")
+        div.card-header.logo
+            a(href="/?mode=ui")
+                img(src="/logo.png")
+        h3 Reset password
+        form(action="/resetpw/"+user.registerToken method="post")
+            div.input-group
+                span.input-group-text
+                    i.fa.fa-user
+                input(class="form-control" id="username" type="text" placeholder="Username" value=user.username disabled read-only)
+            div.input-group.mt-3
+                span.input-group-text
+                    i.fa.fa-key
+                input(class="form-control" id="password" type="password" name="password" placeholder="Password" required)
+            div.input-group.mt-3
+                span.input-group-text
+                    i.fa.fa-key
+                input(class="form-control" id="passwordControl" type="password" name="passwordControl" placeholder="Repeat Password" required)
+            if error
+                div(class="alert alert-danger") Invalid user
+
+            div.alert.alert-danger.d-none.checkerr Passwords are not matching
+            
+            button(type="submit" value="changepw" class="btn btn-primary mt-3") Update password
+
+block scripts
+    script(type="text/javascript")
+        include js/login.js

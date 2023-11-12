@@ -4,8 +4,14 @@ block content
     div(id="login-form")
         h3 Login
         form(action="/login" method="post")
-            input(class="form-control" id="username" type="text" name=loginField placeholder="Username" required)
-            input(class="form-control mt-3" id="password" type="password" name=passField placeholder="Password" required)
+            div.input-group
+                span.input-group-text
+                        i.fa.fa-user
+                input(class="form-control" id="username" type="text" name=loginField placeholder="Username" value=lastUnsername required)
+            div.input-group.mt-3
+                span.input-group-text
+                    i.fa.fa-key
+                input(class="form-control" id="password" type="password" name=passField placeholder="Password" required)
             if error
                 div(class="alert alert-danger") Invalid user
             button(type="submit" value="login" class="btn btn-primary mt-3") Login

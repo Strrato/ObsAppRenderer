@@ -17,6 +17,8 @@ import * as Apps from './Apps.js'
 import Database from 'better-sqlite3';
 import StoreFactory from 'better-sqlite3-session-store';
 import { ClientSocket } from './ClientSocket.js';
+import UsernameExistsError from './Errors/UsernameExistsError.js';
+import App from '../apps/App.js';
 const SqliteStore = StoreFactory(session);
 
 dotenv.config()
@@ -24,6 +26,8 @@ dotenv.config()
 let dbPath = path.resolve(process.env.DB_LOCATION);
 Utils.mkdir(dbPath);
 const sessionsDB = new Database(path.resolve(`${dbPath}/sessions.db`));
+
+const noUserUri = ['/login', '/resetpw', '/favicon'];
 
 export class ClientServer {
     constructor() {
@@ -41,13 +45,20 @@ export class ClientServer {
             host : null,
             protocol: null
         };
+
+        let limit = 10;
+
+        if (this.debug){
+            limit = 10000;
+        }
+
         this.rateLimite = rateLimit({
             windowMs: 15 * 60 * 1000, // 15 minutes
-            limit: 10, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
+            limit: limit, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
             standardHeaders: 'draft-7', // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
             legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
         });
-
+        
         this.debug = process.env.APP_ENV.indexOf('debug') > -1;
 
         passport.use('local-user', new LocalStrategy({
@@ -164,7 +175,16 @@ export class ClientServer {
         this.app.use('/fonts', express.static(path.resolve('./assets/fonts')));
 
         this.app.use((req, res, next) => {
-            if (Utils.defined(req.user)){
+
+            let noUserPage = false;
+            for(let page of noUserUri){
+                if (req.url.indexOf(page) > -1){
+                    noUserPage = true;
+                    break;
+                }
+            }
+
+            if (Utils.defined(req.user) && !noUserPage){
                 this.user = req.user;
             }else {
                 this.user = null;
@@ -191,22 +211,26 @@ export class ClientServer {
 
         this.app.get('/login',  (req, res) => {
             const hasError = Utils.defined(req.query.failed) && req.query.failed == 1;
+            let lastUnsername = Utils.defined(req.query.user) ? req.query.user : '';
             res.render('login', this._tplParams({ 
-                error : hasError,
-                loginField : Tables.users.fields.username,
-                passField : Tables.users.fields.password,
-                mode : 'normal'
+                error        : hasError,
+                loginField   : Tables.users.fields.username,
+                passField    : Tables.users.fields.password,
+                mode         : 'ui',
+                uiScripts    : true,
+                lastUnsername: lastUnsername
             }));
         });
 
-        this.app.get('/resetpw/:token', this.rateLimite,  (req, res) => {
+        this.app.get('/resetpw/:token', (req, res) => {
             const user = this.db.getUserByRegisterToken(Utils.satanize(req.params.token));
             if (!user){
                 return res.status(404).send('User not found');
             }
             res.render('resetpw', this._tplParams({ 
                 user : user,
-                mode : 'normal'
+                mode : 'ui',
+                ui : false,
             }));
         });
 
@@ -224,7 +248,7 @@ export class ClientServer {
                 return res.status(401).send('Error updating password');
             }
 
-            return res.redirect('/login');
+            return res.redirect(`/login?user=${user.username}`);
         });
 
         this.app.get('/logout',  (req, res) => {
@@ -236,7 +260,7 @@ export class ClientServer {
         });
 
         this.app.post('/login', this.rateLimite, passport.authenticate('local-user', {
-            successRedirect: '/render/default?mode=normal',
+            successRedirect: '/render/default?mode=ui',
             failureRedirect: '/login?failed=1',
             failureFlash: true
         }));
@@ -255,7 +279,7 @@ export class ClientServer {
                 if (Utils.defined(req.query.notfound) && req.query.notfound == 1){
                     params.errors.push('Unkown app');
                 }
-
+                params.mode = 'ui';
                 res.render('apps', this._tplParams(params));
                 return;
             }
@@ -264,7 +288,7 @@ export class ClientServer {
                 res.redirect(`/render/default?notfound=1&mode=${this.mode}`)
                 return;
             }
-            console.log('renering', app);
+            console.log('rendering', app);
             return this._renderApp(app, req, res);
         });
 
@@ -281,13 +305,23 @@ export class ClientServer {
             if (!username){
                 res.status(401).send('Missing username');
             }
+            try {
 
-            const newUser = this.db.registerUser(username, scopes);
-            const results = {
-                registerUrl : this._getUrl('/resetpw/' + newUser.registerToken, '')
-            };
+                const newUser = this.db.registerUser(username, scopes);
+                const results = {
+                    url : this._getUrl('resetpw/' + newUser.registerToken, 'ui')
+                };
 
-            return res.status(200).send(JSON.stringify(results));
+                return res.status(200).send(JSON.stringify(results));
+
+            }catch(e){
+                console.log(e);
+                if (e.name === 'UsernameExistsError'){
+                    return res.status(200).send(JSON.stringify({ error : 'Username already used' }));
+                }
+
+                return res.status(200).send(JSON.stringify({ error : 'Something went wrong' }));
+            }
         });
 
         if (this.debug){
@@ -357,16 +391,19 @@ export class ClientServer {
 
     _tplParams(params){
         params = params || {};
+        let mode = Utils.defined(params.mode) ? params.mode : this.mode;
         const defaultParams = {
-            title   : 'Obs App renderer',
-            appTitle: 'Obs App renderer',
-            user    : this.user,
-            mode    : this.mode,
-            host    : this.http.host,
-            protocol: this.http.protocol,
-            appList : this.appList,
-            Utils   : Utils,
-            isAdmin : this._isAdmin()
+            title    : 'Obs App renderer',
+            appTitle : 'Obs App renderer',
+            user     : this.user,
+            mode     : mode,
+            host     : this.http.host,
+            protocol : this.http.protocol,
+            appList  : this.appList,
+            Utils    : Utils,
+            isAdmin  : this._isAdmin(),
+            ui       : this.user && mode === 'ui',
+            uiScripts: mode === 'ui',
         };
         return {
             ...defaultParams,
@@ -375,11 +412,18 @@ export class ClientServer {
     }
 
     _renderApp(app, req, res){
+        let renderApp = null;
         try{
-            this.clientSocket.openSocket(app, this.user);
-            return Apps.getApp(app, this.user, this.app, this._tplParams()).render(req, res);
+            /** @type {App} */
+            renderApp = Apps.getApp(app, this.user, this.app, this.clientSocket, this._tplParams());
+            this.clientSocket.openSocket(renderApp.appName, this.user);
+
+            return renderApp.render(req, res);
         }catch(e){
             console.error(e);
+            if (renderApp !== null){
+                this.clientSocket.closeSocket(renderApp.appName, this.user);
+            }
             return res.redirect(`/render/default?notfound=1&mode=${this.mode}`);
         }
     }
@@ -401,7 +445,7 @@ export class ClientServer {
     }
 
     _getUrl(route, mode){
-        mode = Utils.defined(mode) ? mode : 'stream';
+        mode =  mode || 'stream';
         return this.http.protocol + '://' + this.http.host + '/' + route + '?mode=' + mode;
     }
 

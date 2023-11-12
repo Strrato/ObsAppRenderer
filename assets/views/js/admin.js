@@ -1,14 +1,4 @@
 
-const swalBs = Swal.mixin({
-    customClass: {
-        confirmButton: 'btn btn-success',
-        cancelButton: 'btn btn-danger'
-    },
-    buttonsStyling: false,
-    reverseButtons: true,
-    showCancelButton: true,
-})
-
 $(function(){
     $('.admin-add-user').on('click', function(){
         swalBs.fire({
@@ -29,27 +19,31 @@ $(function(){
                     )
                     return false;
                 }
-
-                return await new Promise((r, e) => {
-                    $.ajax({
+                swalBs.showLoading();
+                
+                let response = await $.ajax({
                         url : '/admin/addUser',
                         method : 'POST',
                         data : {
                             username : username,
                             scopes : scopes
                         }
-                    }).done(response => {
-                        console.log(response);
-                        r(true);
-                    }).fail(err => {
-                        notifyFail(err);
-                        e(false);
                     });
-                })
+                response = JSON.parse(response);
 
+                if (response.error){
+                    Swal.showValidationMessage(
+                        response.error
+                    )
+                    return false;
+                }else if (response.url){
+                    swalBs.fire({
+                        title: "Success",
+                        text: response.url,
+                        icon: "success"
+                    });
+                }
             }
-        }).then(result => {
-
         });
     });
 });

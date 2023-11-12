@@ -10,6 +10,7 @@ body {
     background-color: var(--background-theme);
 }
 
+#register-form, 
 #login-form {
     margin: 0 auto;
     background-color: #fff;
@@ -19,13 +20,16 @@ body {
     padding: 15px;
 }
 
-#login-form input {
-    margin: 0 auto;
-    text-align: center;
+#register-form i, 
+#login-form i {
+    width: 15px;;
 }
 
-#login-form button {
-    width: 30%;
+#register-form input,
+#login-form input 
+{
+    margin: 0 auto;
+    text-align: center;
 }
 
 .user-profile {
@@ -38,4 +42,29 @@ body {
 
 .col-logged .card + .card {
     margin-top: 20px;
+}
+
+.logo {
+    text-align: center;
+}
+
+.logo img {
+    width: 50px;
+}
+
+.loading, .loading-full {
+    content : url('/logo.png');
+    animation: fa-spin 2s infinite linear;
+    width: 50px;
+    margin: 0 auto;
+    padding: 0 !important;
+}
+
+.loading-full {
+    top: 50%;
+    position: relative;
+}
+
+.pointer {
+    cursor: pointer;
 }

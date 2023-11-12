@@ -1,21 +1,23 @@
-- var ui = mode !== 'stream';
 <!DOCTYPE html>
 html(lang="en")
     head
         title= title
         meta(charset='utf-8')
-        if ui
+        if uiScripts
             meta(name="viewport" content="width=device-width, initial-scale=1")
             link(href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet")
-            link(href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.5.2/animate.min.css" rel="stylesheet")
 
+        link(href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.5.2/animate.min.css" rel="stylesheet")
         link(href="https://fonts.googleapis.com/css?family=Roboto:400" rel="stylesheet")
         link(href="/font-awesome.min.css" rel="stylesheet")
         link(href="/style.css" rel="stylesheet")
 
+        if !ui
+            link(href="/obs.css" rel="stylesheet")
+
         block head
     
-    body(style=ui ? '': 'background: none !important')
+    body(style=ui || uiScripts ? '': 'background: none !important')
 
     div(class="container-fluid")
         - var hasError = typeof(errors) === typeof [] && errors.length > 0;
@@ -26,24 +28,31 @@ html(lang="en")
             div.row.col-ui
                 div.col-3.col-logged
                     block userProfile
-                        if user
-                            div(class="card user-profile")
-                                div(class="card-body row")
-                                    div(class="profile-actions col-2")
-                                        div(class="btn-group" role="group")
-                                            a(class="btn btn-danger btn-xs" href="/logout")
-                                                i.fa.fa-sign-out
+                        div(class="card user-profile")
+                            div.card-header.logo
+                                a(href="/?mode=ui")
+                                    img(src="/logo.png")
+                            div(class="card-body row")
+                                div(class="profile-actions col-2")
+                                    div(class="btn-group" role="group")
+                                        a(class="btn btn-danger btn-sm" href="/logout")
+                                            i.fa.fa-sign-out
 
-                                    div(class="profile-details col-8")
-                                        div(class="fw-bold")
-                                                i(class="fa fa-user me-3")
-                                                span #{user.username}
-                                                span.ms-3 Token
-                                                    i(class="ms-2 fa fa-eye show-token" title="Show token" data-content=user.token)
-                                                    i(class="fa fa-refresh ms-2 refresh-token" title="Refresh token")
+                                div(class="profile-details col-8")
+                                    div(class="fw-bold")
+                                            i(class="fa fa-user me-3")
+                                            span #{user.username}
+                                            span.ms-3 Token
+                                                i(class="ms-2 fa fa-eye show-token pointer" title="Show token")
+                                                i(class="fa fa-refresh ms-2 refresh-token pointer" title="Refresh token")
 
-                                    div(class="profile-right col-2")
-                                        i(class="fa fa-cog user-settings ms-2")
+                                div(class="profile-right col-2")
+                                    i(class="fa fa-cog user-settings ms-2")
+                                
+                                div.d-none(id="token-content")
+                                    - var tokenContent = typeof app !== typeof void(0) ? `${protocol}://${host}/obs/${app}/${user.token}` : user.token;
+                                    . 
+                                        #{tokenContent}
 
                     block appList
                         if appList
@@ -73,16 +82,16 @@ html(lang="en")
         else
             block content
 
-    script(src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js")
+        script(src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js")
 
-    if ui
-        script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js")
-        script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
-        script(type="text/javascript")
-            include js/layout.js
+        if uiScripts
+            script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js")
+            script(src="https://cdn.jsdelivr.net/npm/sweetalert2@11")
+            script(type="text/javascript")
+                include js/layout.js
 
-    if isAdmin
-        script(type="text/javascript")
-            include js/admin.js
+        if isAdmin
+            script(type="text/javascript")
+                include js/admin.js
 
     block scripts

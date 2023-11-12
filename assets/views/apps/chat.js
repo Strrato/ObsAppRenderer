@@ -9,10 +9,12 @@ ws.onerror = err => {
 
 ws.onopen = () => {
     console.log('Socket open');
-    $('#content').html('<div style="text-align: center; color: white; background-color: green; padding: 10px">Connected ! </div>');
+    
+    $('#content').removeClass('loading-full').html('<div style="text-align: center; color: white; background-color: green; padding: 10px">Connected ! </div>');
     setTimeout(() => {
         $('#content').html('');
     }, 1000);
+    
 };
 
 ws.onmessage = event => {
