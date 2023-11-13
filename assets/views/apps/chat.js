@@ -213,6 +213,7 @@ function addMessage(author, message, msgId, badges, isModerator, source) {
     console.log('styleUserColor', styleUserColor);
 
     let avatar = author.avatar ? author.avatar : 'https://c.tenor.com/wpSo-8CrXqUAAAAi/loading-loading-forever.gif';
+    message = message.replace( /(<([^>]+)>)/ig, '');
     
     const element = $.parseHTML(`
     <div class="row ${animationIn} animated" data-from="${author.id}" data-id="${msgId}">
