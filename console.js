@@ -12,7 +12,8 @@ const reader = readline.createInterface({
 const commandList = {
     addUser : addUser,
     testMessage : testMessage,
-    testMessageAuto: testMessageAuto
+    testMessageAuto: testMessageAuto,
+    testXss : testXss
 };
 
 function defined(variable){
@@ -69,8 +70,6 @@ async function testMessage(){
     let message = await askAsync('Message ?');
     axios.post(`http://localhost:4242/simulate/${app}/${user}`, {
         message : message
-    }).then(res => {
-        console.log(res);
     });
 
     return askCommand();
@@ -82,8 +81,19 @@ async function testMessageAuto(){
     let message = 'Est velit incididunt in do adipisicing ullamco pariatur enim cupidatat duis dolor cillum.';
     axios.post(`http://localhost:4242/simulate/${app}/${user}`, {
         message : message
-    }).then(res => {
-        console.log(res);
+    });
+
+    return askCommand();
+}
+
+askCommand();
+
+async function testXss(){
+    let app = 'chat';
+    let user = 'Strato';
+    let message = '<img src="https://static-ca-cdn.eporner.com/gallery/gI/vu/Rf7DK5avugI/672095-f-18-all-the-guys-at-uni-say-i-have-porn-star-bo.jpg" style="width: 100px; height: 100px;" onload="alert(\'coucou\')">';
+    axios.post(`http://localhost:4242/simulate/${app}/${user}`, {
+        message : message
     });
 
     return askCommand();

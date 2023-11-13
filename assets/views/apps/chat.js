@@ -210,7 +210,6 @@ function addMessage(author, message, msgId, badges, isModerator, source) {
         styleUserColor += "border: .15em solid " + modoColor + ";" ;
     }
 
-    console.log('styleUserColor', styleUserColor);
 
     let avatar = author.avatar ? author.avatar : 'https://c.tenor.com/wpSo-8CrXqUAAAAi/loading-loading-forever.gif';
     message = message.replace( /(<([^>]+)>)/ig, '');
